@@ -123,3 +123,4 @@ GOOGLE_CALENDAR_ID_GENERAL=87e75f4bdbe82266d11389e6a12cb51684857de5aa8fcf3b5819a
     donde el mensaje se codifica usando `encodeURIComponent` e incluye el resumen detallado (Nombre, Teléfono, Sucursal, Dirección, Estilista, Servicio, Fecha, Hora y Duración).
 *   **Acción del Botón:** Se abre en una nueva pestaña. El cliente solo revisa el texto prellenado en su WhatsApp y presiona "Enviar". No requiere de integraciones pagas de WhatsApp Business API ni intervención del servidor.
 *   **Comportamiento Sin Configuración:** Si no hay número de WhatsApp en la sucursal, se muestra un mensaje informativo sugiriendo contactar directamente a recepción.
+ 
