@@ -1,9 +1,23 @@
-import { createPool } from "@vercel/postgres";
+import { Pool } from "pg";
 
-// Initialize Postgres connection pool supporting custom Vercel prefix "STORAGE_URL"
-export const pool = createPool({
-  connectionString: process.env.STORAGE_URL || process.env.POSTGRES_URL
+// Initialize standard Postgres connection pool supporting any custom prefix/provider (including Prisma Postgres)
+const pgPool = new Pool({
+  connectionString: process.env.STORAGE_URL || process.env.POSTGRES_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
+
+// Mock the @vercel/postgres template literal query interface for drop-in compatibility
+export const pool = {
+  async sql(strings, ...values) {
+    let text = strings[0];
+    for (let i = 1; i < strings.length; i++) {
+      text += `$${i}` + strings[i];
+    }
+    return await pgPool.query(text, values);
+  }
+};
 
 // Helper to check if tables exist and initialize them if not
 export async function initDb() {
