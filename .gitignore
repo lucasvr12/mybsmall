@@ -28,3 +28,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# temp chrome data
+/chrome_temp/
+/chrome_error.log
+/chrome_out.log
