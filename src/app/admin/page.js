@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [editingBranchPhones, setEditingBranchPhones] = useState({});
 
   // Add forms state
   const [newStaff, setNewStaff] = useState({ name: "", phone: "", img: "", branchIds: [], serviceIds: [] });
@@ -446,13 +447,14 @@ export default function AdminPage() {
         )}
 
         {/* TAB BUTTONS */}
-        <div className="grid grid-cols-3 md:grid-cols-5 gap-2 bg-[#111] p-1.5 rounded-2xl border border-white/10 max-w-4xl mx-auto">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 bg-[#111] p-1.5 rounded-2xl border border-white/10 max-w-4xl mx-auto">
           {[
             { id: "appointments", label: "Citas", icon: CalendarIcon },
             { id: "staff", label: "Estilistas", icon: Users },
             { id: "services", label: "Servicios", icon: Scissors },
             { id: "schedules", label: "Horarios", icon: Clock },
-            { id: "blocks", label: "Bloqueos", icon: Slash }
+            { id: "blocks", label: "Bloqueos", icon: Slash },
+            { id: "branches", label: "Sucursales", icon: Briefcase }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1156,6 +1158,71 @@ export default function AdminPage() {
                   })
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* SECTION: BRANCHES */}
+        {activeTab === "branches" && (
+          <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-['Oswald'] font-bold uppercase">Gestión de Sucursales</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {(config.branches || []).map((branch) => {
+                const localPhone = editingBranchPhones[branch.id] !== undefined
+                  ? editingBranchPhones[branch.id]
+                  : branch.whatsapp;
+                  
+                const isChanged = localPhone !== branch.whatsapp;
+
+                return (
+                  <div key={branch.id} className="bg-[#111] border border-white/10 rounded-3xl p-6 space-y-4">
+                    <div>
+                      <h3 className="text-xl font-['Oswald'] font-bold uppercase text-white tracking-wide">
+                        {branch.name}
+                      </h3>
+                      <p className="text-xs text-gray-500 font-semibold mt-1">
+                        {branch.address}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        Teléfono WhatsApp (12 dígitos, ej: 528180262245)
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="tel"
+                          className="flex-1 bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white font-mono"
+                          value={localPhone}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, ""); // Allow only digits
+                            setEditingBranchPhones(prev => ({
+                              ...prev,
+                              [branch.id]: val
+                            }));
+                          }}
+                        />
+                        <button
+                          disabled={!isChanged}
+                          onClick={() => {
+                            apiCall("updateBranch", { id: branch.id, whatsapp: localPhone });
+                          }}
+                          className={`font-bold px-5 rounded-xl transition text-xs uppercase font-['Oswald'] tracking-wider ${
+                            isChanged 
+                              ? "bg-mbRed hover:bg-red-700 text-white cursor-pointer" 
+                              : "bg-white/5 text-gray-600 cursor-not-allowed"
+                          }`}
+                        >
+                          Guardar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

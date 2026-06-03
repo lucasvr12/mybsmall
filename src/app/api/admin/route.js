@@ -42,6 +42,21 @@ export async function POST(request) {
           return NextResponse.json({ success: true });
         }
 
+        case "updateBranch": {
+          const { id, whatsapp, address, name } = params;
+          if (!id) {
+            return NextResponse.json({ error: "ID de sucursal es obligatorio" }, { status: 400 });
+          }
+          await sql`
+            UPDATE branches 
+            SET whatsapp = COALESCE(${whatsapp}, whatsapp),
+                address = COALESCE(${address}, address),
+                name = COALESCE(${name}, name)
+            WHERE id = ${id};
+          `;
+          return NextResponse.json({ success: true });
+        }
+
         case "addStaff": {
           const { name, phone, img, branchIds, serviceIds } = params;
           const id = name.toLowerCase().replace(/[^a-z0-9]/g, "_") + "_" + Date.now().toString().slice(-4);
