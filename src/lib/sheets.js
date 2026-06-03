@@ -24,6 +24,16 @@ function getAuthClient() {
     throw new Error("Missing Google Service Account credentials in environment variables");
   }
 
+  // Temporary debug check for Vercel formatting
+  if (privateKey) {
+    const cleaned = privateKey.replace(/\r/g, "");
+    const hasHeader = cleaned.includes("-----BEGIN PRIVATE KEY-----");
+    const hasFooter = cleaned.includes("-----END PRIVATE KEY-----");
+    if (!hasHeader || !hasFooter) {
+      throw new Error(`Key format check: length=${privateKey.length}, hasHeader=${hasHeader}, hasFooter=${hasFooter}, startsWith=${privateKey.substring(0, 20)}...`);
+    }
+  }
+
   cachedAuth = new google.auth.GoogleAuth({
     credentials: {
       client_email: email,
