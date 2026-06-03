@@ -10,11 +10,17 @@ function getAuthClient() {
   let privateKey = process.env.GOOGLE_PRIVATE_KEY;
   if (privateKey) {
     privateKey = privateKey.trim();
-    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-      privateKey = privateKey.substring(1, privateKey.length - 1);
+    if (privateKey.startsWith('"')) {
+      privateKey = privateKey.substring(1);
     }
-    if (privateKey.startsWith("'") && privateKey.endsWith("'")) {
-      privateKey = privateKey.substring(1, privateKey.length - 1);
+    if (privateKey.endsWith('"')) {
+      privateKey = privateKey.substring(0, privateKey.length - 1);
+    }
+    if (privateKey.startsWith("'")) {
+      privateKey = privateKey.substring(1);
+    }
+    if (privateKey.endsWith("'")) {
+      privateKey = privateKey.substring(0, privateKey.length - 1);
     }
     privateKey = privateKey.replace(/\\n/g, "\n");
   }
