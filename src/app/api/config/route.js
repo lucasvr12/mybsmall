@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAdminData } from "@/lib/sheets";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const adminData = await getAdminData();
