@@ -148,6 +148,36 @@ export async function POST(request) {
         return NextResponse.json({ success: true });
       }
 
+      case "updateSchedulesBatch": {
+        const { schedules } = params;
+        if (!schedules || !Array.isArray(schedules)) {
+          return NextResponse.json({ error: "Lista de horarios inválida" }, { status: 400 });
+        }
+
+        for (const item of schedules) {
+          const { staffId, branchId, dayOfWeek, startTime, endTime, active } = item;
+          const result = await pool.sql`
+            SELECT id FROM schedules 
+            WHERE staff_id = ${staffId} AND branch_id = ${branchId} AND day_of_week = ${dayOfWeek};
+          `;
+
+          if (result.rows.length > 0) {
+            await pool.sql`
+              UPDATE schedules 
+              SET start_time = ${startTime}, end_time = ${endTime}, active = ${active} 
+              WHERE id = ${result.rows[0].id};
+            `;
+          } else {
+            await pool.sql`
+              INSERT INTO schedules (staff_id, branch_id, day_of_week, start_time, end_time, active)
+              VALUES (${staffId}, ${branchId}, ${dayOfWeek}, ${startTime}, ${endTime}, ${active});
+            `;
+          }
+        }
+
+        return NextResponse.json({ success: true });
+      }
+
       default:
         return NextResponse.json({ error: "Acción no reconocida" }, { status: 400 });
     }

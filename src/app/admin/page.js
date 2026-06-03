@@ -40,6 +40,10 @@ export default function AdminPage() {
   // Selected staff/branch for schedule editing
   const [selectedStaffSchedule, setSelectedStaffSchedule] = useState("");
   const [selectedBranchSchedule, setSelectedBranchSchedule] = useState("");
+
+  // Local schedules and blocks state
+  const [editingSchedules, setEditingSchedules] = useState({});
+  const [quickBlock, setQuickBlock] = useState({ type: "Completo", date: "", startTime: "", endTime: "", reason: "" });
   
   // Check local session storage for password persistence
   useEffect(() => {
@@ -51,6 +55,23 @@ export default function AdminPage() {
       setLoading(false);
     }
   }, []);
+
+  // Synchronize local schedules state when Stylist/Branch selection changes
+  useEffect(() => {
+    if (selectedStaffSchedule && selectedBranchSchedule && config) {
+      const days = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+      const initial = {};
+      days.forEach(day => {
+        const sched = config.schedules.find(
+          s => s.staffId === selectedStaffSchedule && s.branchId === selectedBranchSchedule && s.dayOfWeek === day
+        ) || { startTime: "09:00", endTime: "19:00", active: true };
+        initial[day] = { ...sched };
+      });
+      setEditingSchedules(initial);
+    } else {
+      setEditingSchedules({});
+    }
+  }, [selectedStaffSchedule, selectedBranchSchedule, config]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -108,7 +129,7 @@ export default function AdminPage() {
     }
   };
 
-  // Fetch helper
+  // Fetch helper (refreshes data in place instead of reloading the page)
   const apiCall = async (action, data = {}) => {
     setActionLoading(true);
     setErrorMessage("");
@@ -124,10 +145,10 @@ export default function AdminPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Error al procesar la solicitud");
       
-      // Refresh state
-      window.location.reload();
+      await loadDashboardData();
     } catch (err) {
       setErrorMessage(err.message);
+    } finally {
       setActionLoading(false);
     }
   };
@@ -137,11 +158,13 @@ export default function AdminPage() {
     e.preventDefault();
     if (!newStaff.name || !newStaff.phone) return;
     
-    // Select all branches and services by default to simplify setup, 
-    // unless specified
-    const branchIds = newStaff.branchIds.length > 0 
-      ? newStaff.branchIds 
-      : (config.branches || []).map(b => b.id);
+    // Require selecting at least one branch
+    if (newStaff.branchIds.length === 0) {
+      alert("Por favor selecciona al menos una sucursal para el estilista.");
+      return;
+    }
+    
+    // Select all services by default to simplify setup
     const serviceIds = newStaff.serviceIds.length > 0 
       ? newStaff.serviceIds 
       : (config.services || []).map(s => s.id);
@@ -150,9 +173,12 @@ export default function AdminPage() {
       name: newStaff.name, 
       phone: newStaff.phone, 
       img: newStaff.img,
-      branchIds,
+      branchIds: newStaff.branchIds,
       serviceIds
     });
+
+    // Reset form state
+    setNewStaff({ name: "", phone: "", img: "", branchIds: [], serviceIds: [] });
   };
 
   // Add Service Handler
@@ -210,19 +236,13 @@ export default function AdminPage() {
     }
   };
 
-  // Update Schedule Hour Handler
+  // Update Schedule Hour Handler (Legacy - retained for safety)
   const handleUpdateSchedule = (day, field, val) => {
     if (!selectedStaffSchedule || !selectedBranchSchedule) return;
     
-    // Find current schedule value
     const current = config.schedules.find(
       s => s.staffId === selectedStaffSchedule && s.branchId === selectedBranchSchedule && s.dayOfWeek === day
     ) || { startTime: "09:00", endTime: "19:00", active: true };
-
-    const updated = {
-      ...current,
-      [field]: val
-    };
 
     apiCall("updateSchedule", {
       staffId: selectedStaffSchedule,
@@ -232,6 +252,58 @@ export default function AdminPage() {
       endTime: field === "endTime" ? val : (current.endTime || "19:00"),
       active: field === "active" ? val : (current.active !== undefined ? current.active : true)
     });
+  };
+
+  // Helper to filter stylists linked to the selected branch
+  const getStylistsForSelectedBranch = () => {
+    if (!selectedBranchSchedule) return [];
+    return config.staff.filter(st => 
+      config.staffBranches.some(sb => sb.branchId === selectedBranchSchedule && sb.staffId === st.id && sb.active)
+    );
+  };
+
+  // Modify schedule value locally (no API call on keystroke)
+  const handleLocalScheduleChange = (day, field, val) => {
+    setEditingSchedules(prev => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [field]: val
+      }
+    }));
+  };
+
+  // Save the full weekly schedules for the stylist at this branch
+  const handleSaveAllSchedules = () => {
+    if (!selectedStaffSchedule || !selectedBranchSchedule) return;
+    
+    const schedulesList = Object.values(editingSchedules).map(sched => ({
+      staffId: selectedStaffSchedule,
+      branchId: selectedBranchSchedule,
+      dayOfWeek: sched.dayOfWeek,
+      startTime: sched.startTime || "09:00",
+      endTime: sched.endTime || "19:00",
+      active: sched.active !== undefined ? sched.active : true
+    }));
+
+    apiCall("updateSchedulesBatch", { schedules: schedulesList });
+  };
+
+  // Add block quickly from the schedules view
+  const handleQuickAddBlock = (e) => {
+    e.preventDefault();
+    if (!selectedBranchSchedule || !selectedStaffSchedule || !quickBlock.date) return;
+    apiCall("addBlock", {
+      type: quickBlock.type,
+      staffId: selectedStaffSchedule,
+      branchId: selectedBranchSchedule,
+      date: quickBlock.date,
+      startTime: quickBlock.type === "Parcial" ? quickBlock.startTime : null,
+      endTime: quickBlock.type === "Parcial" ? quickBlock.endTime : null,
+      reason: quickBlock.reason
+    });
+    // Reset form state
+    setQuickBlock({ type: "Completo", date: "", startTime: "", endTime: "", reason: "" });
   };
 
   // Custom useEffect to load appointments dynamically
@@ -497,32 +569,60 @@ export default function AdminPage() {
               <h3 className="text-lg font-['Oswald'] font-bold uppercase flex items-center gap-2">
                 <Plus className="w-5 h-5 text-mbRed" /> Dar de Alta Nuevo Estilista / Barbero
               </h3>
-              <form onSubmit={handleAddStaff} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nombre del Barbero</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Carlos Vera"
-                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white"
-                    value={newStaff.name}
-                    onChange={(e) => setNewStaff(prev => ({ ...prev, name: e.target.value }))}
-                  />
+              <form onSubmit={handleAddStaff} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nombre del Barbero</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Carlos Vera"
+                      className="w-full bg-black border border-white/10 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-mbRed text-white"
+                      value={newStaff.name}
+                      onChange={(e) => setNewStaff(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Teléfono</label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="10 dígitos"
+                      className="w-full bg-black border border-white/10 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-mbRed text-white font-mono"
+                      value={newStaff.phone}
+                      onChange={(e) => setNewStaff(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Teléfono</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="10 dígitos"
-                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white font-mono"
-                    value={newStaff.phone}
-                    onChange={(e) => setNewStaff(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
-                  />
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sucursal(es) donde trabaja</label>
+                  <div className="flex flex-wrap gap-6 mt-1 bg-black/40 p-4 border border-white/5 rounded-xl">
+                    {(config.branches || []).map(b => (
+                      <label key={b.id} className="flex items-center gap-2.5 text-sm text-gray-300 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="rounded border-white/10 bg-black text-mbRed focus:ring-mbRed w-4.5 h-4.5"
+                          checked={newStaff.branchIds.includes(b.id)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setNewStaff(prev => {
+                              const branchIds = checked 
+                                ? [...prev.branchIds, b.id]
+                                : prev.branchIds.filter(id => id !== b.id);
+                              return { ...prev, branchIds };
+                            });
+                          }}
+                        />
+                        <span>{b.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+
                 <button
                   type="submit"
-                  className="bg-mbRed hover:bg-red-700 text-white font-bold py-3.5 px-6 rounded-xl transition uppercase text-xs tracking-wider font-['Oswald'] shadow-lg shadow-mbRed/10"
+                  className="bg-mbRed hover:bg-red-700 text-white font-bold py-3.5 px-8 rounded-xl transition uppercase text-xs tracking-wider font-['Oswald'] shadow-lg shadow-mbRed/10 mt-2 w-full md:w-auto"
                 >
                   Agregar Estilista
                 </button>
@@ -662,30 +762,21 @@ export default function AdminPage() {
 
         {/* SECTION: SCHEDULES */}
         {activeTab === "schedules" && (
-          <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
-            <h2 className="text-2xl font-['Oswald'] font-bold uppercase">Horarios de Trabajo</h2>
+          <div className="space-y-8 max-w-4xl mx-auto animate-fade-in">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-['Oswald'] font-bold uppercase">Horarios de Trabajo</h2>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-[#111] p-5 rounded-2xl border border-white/10">
+            <div className="bg-[#111] p-6 rounded-3xl border border-white/10 space-y-4">
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">1. Selecciona Estilista</label>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">1. Selecciona Sucursal</label>
                 <select
-                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white uppercase font-bold"
-                  value={selectedStaffSchedule}
-                  onChange={(e) => setSelectedStaffSchedule(e.target.value)}
-                >
-                  <option value="">-- Elige Estilista --</option>
-                  {(config.staff || []).map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">2. Selecciona Sucursal</label>
-                <select
-                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white uppercase font-bold"
+                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-mbRed text-white uppercase font-bold"
                   value={selectedBranchSchedule}
-                  onChange={(e) => setSelectedBranchSchedule(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedBranchSchedule(e.target.value);
+                    setSelectedStaffSchedule(""); // Reset selected stylist when branch changes
+                  }}
                 >
                   <option value="">-- Elige Sucursal --</option>
                   {(config.branches || []).map(b => (
@@ -695,57 +786,220 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {selectedStaffSchedule && selectedBranchSchedule ? (
-              <div className="bg-[#111] border border-white/10 rounded-2xl p-6 space-y-4">
-                <h3 className="font-['Oswald'] font-bold text-lg uppercase tracking-wide border-b border-white/5 pb-2 text-mbRed">
-                  Editar Horario Semanal
-                </h3>
-                <div className="space-y-4 divide-y divide-white/5">
-                  {["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"].map((day) => {
-                    const sched = config.schedules.find(
-                      s => s.staffId === selectedStaffSchedule && s.branchId === selectedBranchSchedule && s.dayOfWeek === day
-                    ) || { startTime: "09:00", endTime: "19:00", active: true };
+            {selectedBranchSchedule && (
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">2. Estilistas en esta Sucursal</h3>
+                {getStylistsForSelectedBranch().length === 0 ? (
+                  <div className="bg-[#111]/30 border border-white/5 rounded-2xl p-8 text-center text-gray-500">
+                    No hay estilistas vinculados a esta sucursal. Puedes vincularlos desde la pestaña Estilistas.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {getStylistsForSelectedBranch().map(st => {
+                      const isSelected = selectedStaffSchedule === st.id;
+                      return (
+                        <button
+                          key={st.id}
+                          onClick={() => setSelectedStaffSchedule(st.id)}
+                          className={`flex flex-col items-center p-4 rounded-2xl border text-center transition-all ${
+                            isSelected 
+                              ? "bg-mbRed/10 border-mbRed shadow-lg shadow-mbRed/10 scale-[1.03]" 
+                              : "bg-[#111] border-white/10 hover:border-white/20"
+                          }`}
+                        >
+                          <img
+                            src={st.img}
+                            alt={st.name}
+                            className="w-16 h-16 rounded-full object-cover border border-white/10 bg-black mb-2"
+                            onError={(e) => {
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(st.name)}&background=222&color=cc0000`;
+                            }}
+                          />
+                          <span className="font-bold text-sm text-white uppercase font-['Oswald'] tracking-wide">{st.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
-                    return (
-                      <div key={day} className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-4 first:pt-0">
-                        <span className="font-bold text-sm uppercase text-gray-200 w-28">{day}</span>
-                        <div className="flex flex-wrap items-center gap-4">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="text-gray-500 font-semibold">Entrada</span>
-                            <input
-                              type="text"
-                              className="w-16 bg-black border border-white/10 rounded-lg px-2 py-1.5 text-center font-mono focus:border-mbRed"
-                              value={sched.startTime}
-                              onChange={(e) => handleUpdateSchedule(day, "startTime", e.target.value)}
-                            />
+            {selectedStaffSchedule && selectedBranchSchedule ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* Left Side: Weekly Hours */}
+                <div className="bg-[#111] border border-white/10 rounded-3xl p-6 space-y-4 lg:col-span-7">
+                  <h3 className="font-['Oswald'] font-bold text-lg uppercase tracking-wide border-b border-white/5 pb-2 text-mbRed flex items-center justify-between">
+                    <span>Horario Semanal</span>
+                    <span className="text-xs text-gray-400 font-normal normal-case">
+                      {config.staff.find(s => s.id === selectedStaffSchedule)?.name}
+                    </span>
+                  </h3>
+                  <div className="space-y-4 divide-y divide-white/5">
+                    {["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"].map((day) => {
+                      const sched = editingSchedules[day] || { startTime: "09:00", endTime: "19:00", active: true };
+                      return (
+                        <div key={day} className="flex items-center justify-between gap-4 py-4 first:pt-0">
+                          <span className="font-bold text-xs uppercase text-gray-200 w-24">{day}</span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-gray-500">Entrada</span>
+                              <input
+                                type="text"
+                                className="w-14 bg-black border border-white/10 rounded-lg px-1.5 py-1 text-center font-mono focus:border-mbRed text-xs"
+                                value={sched.startTime || "09:00"}
+                                onChange={(e) => handleLocalScheduleChange(day, "startTime", e.target.value)}
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-gray-500">Salida</span>
+                              <input
+                                type="text"
+                                className="w-14 bg-black border border-white/10 rounded-lg px-1.5 py-1 text-center font-mono focus:border-mbRed text-xs"
+                                value={sched.endTime || "19:00"}
+                                onChange={(e) => handleLocalScheduleChange(day, "endTime", e.target.value)}
+                              />
+                            </div>
+                            
+                            <button
+                              onClick={() => handleLocalScheduleChange(day, "active", !sched.active)}
+                              className={`px-2.5 py-1 rounded-md font-bold text-[10px] uppercase transition ${
+                                sched.active ? "bg-green-600/10 text-green-500 border border-green-500/20" : "bg-red-500/10 text-mbRed border border-mbRed/20"
+                              }`}
+                            >
+                              {sched.active ? "Laborable" : "Descanso"}
+                            </button>
                           </div>
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="text-gray-500 font-semibold">Salida</span>
-                            <input
-                              type="text"
-                              className="w-16 bg-black border border-white/10 rounded-lg px-2 py-1.5 text-center font-mono focus:border-mbRed"
-                              value={sched.endTime}
-                              onChange={(e) => handleUpdateSchedule(day, "endTime", e.target.value)}
-                            />
-                          </div>
-                          
-                          <button
-                            onClick={() => handleUpdateSchedule(day, "active", !sched.active)}
-                            className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase transition ${
-                              sched.active ? "bg-green-600/10 text-green-500 border border-green-500/20" : "bg-red-500/10 text-mbRed border border-mbRed/20"
-                            }`}
-                          >
-                            {sched.active ? "Laborable" : "Descanso"}
-                          </button>
                         </div>
+                      );
+                    })}
+                  </div>
+                  
+                  <button
+                    onClick={handleSaveAllSchedules}
+                    className="bg-mbRed hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition uppercase text-xs tracking-wider font-['Oswald'] shadow-lg shadow-mbRed/10 w-full mt-4"
+                  >
+                    Guardar Horarios
+                  </button>
+                </div>
+
+                {/* Right Side: Blocks for this stylist */}
+                <div className="space-y-6 lg:col-span-5">
+                  {/* Quick Block Creation Form */}
+                  <div className="bg-[#111] border border-white/10 rounded-3xl p-6 space-y-4">
+                    <h3 className="font-['Oswald'] font-bold text-lg uppercase tracking-wide border-b border-white/5 pb-2 text-mbRed">
+                      Bloquear Agenda
+                    </h3>
+                    <form onSubmit={handleQuickAddBlock} className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fecha a Bloquear</label>
+                        <input
+                          type="date"
+                          required
+                          className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white [color-scheme:dark]"
+                          value={quickBlock.date}
+                          onChange={(e) => setQuickBlock(prev => ({ ...prev, date: e.target.value }))}
+                        />
                       </div>
-                    );
-                  })}
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tipo de Bloqueo</label>
+                        <select
+                          className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white font-bold"
+                          value={quickBlock.type}
+                          onChange={(e) => setQuickBlock(prev => ({ ...prev, type: e.target.value }))}
+                        >
+                          <option value="Completo">Todo el día</option>
+                          <option value="Parcial">Rango de Horas</option>
+                        </select>
+                      </div>
+
+                      {quickBlock.type === "Parcial" && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Hora Inicio</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. 13:00"
+                              className="w-full bg-black border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-mbRed text-white font-mono"
+                              value={quickBlock.startTime}
+                              onChange={(e) => setQuickBlock(prev => ({ ...prev, startTime: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Hora Fin</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. 15:00"
+                              className="w-full bg-black border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-mbRed text-white font-mono"
+                              value={quickBlock.endTime}
+                              onChange={(e) => setQuickBlock(prev => ({ ...prev, endTime: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Motivo / Descripción</label>
+                        <input
+                          type="text"
+                          placeholder="Ej. Descanso / Vacaciones"
+                          className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mbRed text-white"
+                          value={quickBlock.reason}
+                          onChange={(e) => setQuickBlock(prev => ({ ...prev, reason: e.target.value }))}
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="bg-mbRed hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition uppercase text-xs tracking-wider font-['Oswald'] shadow-lg shadow-mbRed/10 w-full"
+                      >
+                        Aplicar Bloqueo
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Active Blocks List for this Stylist */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Bloqueos de esta estilista</h4>
+                    {config.blocks.filter(b => b.staffId === selectedStaffSchedule && b.branchId === selectedBranchSchedule).length === 0 ? (
+                      <p className="text-xs text-gray-500 italic bg-[#111]/30 p-4 border border-white/5 rounded-xl text-center">
+                        No hay bloqueos activos para esta estilista en esta sucursal.
+                      </p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {config.blocks
+                          .filter(b => b.staffId === selectedStaffSchedule && b.branchId === selectedBranchSchedule)
+                          .map(block => (
+                            <div key={block.id} className="bg-[#111] border border-white/10 rounded-xl p-3.5 flex items-center justify-between text-xs">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-[9px] px-1.5 py-0.5 rounded bg-mbRed/20 text-mbRed uppercase">
+                                    {block.type === "Completo" ? "Completo" : "Parcial"}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 font-semibold">{block.date}</span>
+                                </div>
+                                {block.type === "Parcial" && (
+                                  <p className="text-[10px] text-gray-500 font-mono mt-0.5">{`${block.startTime} - ${block.endTime} HS`}</p>
+                                )}
+                                {block.reason && <p className="text-[10px] text-gray-500 mt-0.5 italic">{`Motivo: ${block.reason}`}</p>}
+                              </div>
+                              <button
+                                onClick={() => handleDeleteBlock(block.id)}
+                                className="bg-red-500/10 hover:bg-mbRed text-mbRed hover:text-white p-2 rounded-lg border border-mbRed/20 hover:border-transparent transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="bg-[#111]/30 border border-white/5 rounded-2xl p-12 text-center text-gray-500">
-                Selecciona un estilista y una sucursal para poder editar los horarios de trabajo semanales.
+                Selecciona una sucursal y luego haz clic en una estilista para poder gestionar sus horarios de trabajo y bloqueos.
               </div>
             )}
           </div>
