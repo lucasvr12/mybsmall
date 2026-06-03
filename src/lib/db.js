@@ -1,30 +1,25 @@
-import { Pool } from "pg";
+import { Client } from "pg";
 
-// Keep connection pool extremely small (max 1 connection per serverless container)
-// and close idle connections quickly to prevent exhausting Prisma Postgres connection limits.
-let pgPool;
-
-if (!global.pgPool) {
-  global.pgPool = new Pool({
-    connectionString: process.env.STORAGE_URL || process.env.POSTGRES_URL,
-    ssl: {
-      rejectUnauthorized: false
-    },
-    max: 1, // Limit each serverless function container to at most 1 connection
-    idleTimeoutMillis: 2000, // Terminate idle connections after 2 seconds
-    connectionTimeoutMillis: 5000 // Fast timeout if slots are full
-  });
-}
-pgPool = global.pgPool;
-
-// Mock the @vercel/postgres template literal query interface for drop-in compatibility
+// Mock the @vercel/postgres template literal query interface using self-closing Client connections.
+// This guarantees that zero idle connections are left open in serverless containers, preventing slot exhaustion.
 export const pool = {
   async sql(strings, ...values) {
-    let text = strings[0];
-    for (let i = 1; i < strings.length; i++) {
-      text += `$${i}` + strings[i];
+    const client = new Client({
+      connectionString: process.env.STORAGE_URL || process.env.POSTGRES_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+    await client.connect();
+    try {
+      let text = strings[0];
+      for (let i = 1; i < strings.length; i++) {
+        text += `$${i}` + strings[i];
+      }
+      return await client.query(text, values);
+    } finally {
+      await client.end();
     }
-    return await pgPool.query(text, values);
   }
 };
 
