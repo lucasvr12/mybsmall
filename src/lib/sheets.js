@@ -27,7 +27,7 @@ function getAuthClient() {
   // Temporary debug check for Vercel formatting - always throw structure info
   if (privateKey) {
     const lines = privateKey.split("\n");
-    throw new Error(`Key details: length=${privateKey.length}, lines=${lines.length}, firstLine='${lines[0]}', secondLineLength=${lines[1]?.length}, lastLine='${lines[lines.length-1]}', containsLiteralSlashN=${privateKey.includes("\\n")}`);
+    throw new Error(`Key details: length=${privateKey.length}, lines=${lines.length}, firstLine='${lines[0]}', secondLineLength=${lines[1]?.length}, lastLine='${lines[lines.length-1]}', containsLiteralSlashN=${privateKey.includes("\\n")}, commit=${process.env.VERCEL_GIT_COMMIT_SHA || 'unknown'}`);
   }
 
   cachedAuth = new google.auth.GoogleAuth({
