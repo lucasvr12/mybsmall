@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { sql } from "@vercel/postgres";
-import { initDb } from "@/lib/db";
+import { pool, initDb } from "@/lib/db";
 
 const ADMIN_PASSWORD = "myb2026$$";
 
@@ -37,7 +36,7 @@ export async function POST(request) {
     switch (action) {
       case "cancelAppointment": {
         const { id } = params;
-        await sql`UPDATE appointments SET status = 'Cancelada' WHERE id = ${id};`;
+        await pool.sql`UPDATE appointments SET status = 'Cancelada' WHERE id = ${id};`;
         return NextResponse.json({ success: true });
       }
 
@@ -47,19 +46,19 @@ export async function POST(request) {
         const imagePath = img || "/Staff/laura.jpg";
 
         // Insert staff member
-        await sql`INSERT INTO staff (id, name, phone, img, active) VALUES (${id}, ${name}, ${phone}, ${imagePath}, TRUE);`;
+        await pool.sql`INSERT INTO staff (id, name, phone, img, active) VALUES (${id}, ${name}, ${phone}, ${imagePath}, TRUE);`;
 
         // Link to selected branches
         if (branchIds && branchIds.length > 0) {
           for (const bId of branchIds) {
-            await sql`INSERT INTO staff_branches (staff_id, branch_id, active) VALUES (${id}, ${bId}, TRUE);`;
+            await pool.sql`INSERT INTO staff_branches (staff_id, branch_id, active) VALUES (${id}, ${bId}, TRUE);`;
           }
         }
 
         // Link to selected services
         if (serviceIds && serviceIds.length > 0) {
           for (const sId of serviceIds) {
-            await sql`INSERT INTO staff_services (staff_id, service_id, active) VALUES (${id}, ${sId}, TRUE);`;
+            await pool.sql`INSERT INTO staff_services (staff_id, service_id, active) VALUES (${id}, ${sId}, TRUE);`;
           }
         }
 
@@ -68,7 +67,7 @@ export async function POST(request) {
         if (branchIds && branchIds.length > 0) {
           for (const bId of branchIds) {
             for (const day of days) {
-              await sql`
+              await pool.sql`
                 INSERT INTO schedules (staff_id, branch_id, day_of_week, start_time, end_time, active)
                 VALUES (${id}, ${bId}, ${day}, '09:00', '19:00', TRUE);
               `;
@@ -82,7 +81,7 @@ export async function POST(request) {
       case "deleteStaff": {
         const { id } = params;
         // Cascades will delete relations and schedules automatically
-        await sql`DELETE FROM staff WHERE id = ${id};`;
+        await pool.sql`DELETE FROM staff WHERE id = ${id};`;
         return NextResponse.json({ success: true });
       }
 
@@ -91,12 +90,12 @@ export async function POST(request) {
         const id = name.toLowerCase().replace(/[^a-z0-9]/g, "_") + "_" + Date.now().toString().slice(-4);
 
         // Insert service
-        await sql`INSERT INTO services (id, name, category, price, duration_mins, active) VALUES (${id}, ${name}, ${category}, ${price}, ${durationMins}, TRUE);`;
+        await pool.sql`INSERT INTO services (id, name, category, price, duration_mins, active) VALUES (${id}, ${name}, ${category}, ${price}, ${durationMins}, TRUE);`;
 
         // Automatically link this service to all existing staff members to keep configuration simple
-        const staffResult = await sql`SELECT id FROM staff;`;
+        const staffResult = await pool.sql`SELECT id FROM staff;`;
         for (const row of staffResult.rows) {
-          await sql`INSERT INTO staff_services (staff_id, service_id, active) VALUES (${row.id}, ${id}, TRUE) ON CONFLICT DO NOTHING;`;
+          await pool.sql`INSERT INTO staff_services (staff_id, service_id, active) VALUES (${row.id}, ${id}, TRUE) ON CONFLICT DO NOTHING;`;
         }
 
         return NextResponse.json({ success: true, id });
@@ -104,14 +103,14 @@ export async function POST(request) {
 
       case "deleteService": {
         const { id } = params;
-        await sql`DELETE FROM services WHERE id = ${id};`;
+        await pool.sql`DELETE FROM services WHERE id = ${id};`;
         return NextResponse.json({ success: true });
       }
 
       case "addBlock": {
         const { type, staffId, branchId, date, startTime, endTime, reason } = params;
         
-        await sql`
+        await pool.sql`
           INSERT INTO blocks (type, staff_id, branch_id, date, start_time, end_time, reason, active)
           VALUES (${type}, ${staffId || null}, ${branchId}, ${date}, ${startTime || null}, ${endTime || null}, ${reason}, TRUE);
         `;
@@ -120,7 +119,7 @@ export async function POST(request) {
 
       case "deleteBlock": {
         const { id } = params;
-        await sql`DELETE FROM blocks WHERE id = ${id};`;
+        await pool.sql`DELETE FROM blocks WHERE id = ${id};`;
         return NextResponse.json({ success: true });
       }
 
@@ -128,19 +127,19 @@ export async function POST(request) {
         const { staffId, branchId, dayOfWeek, startTime, endTime, active } = params;
 
         // Check if schedule row exists
-        const result = await sql`
+        const result = await pool.sql`
           SELECT id FROM schedules 
           WHERE staff_id = ${staffId} AND branch_id = ${branchId} AND day_of_week = ${dayOfWeek};
         `;
 
         if (result.rows.length > 0) {
-          await sql`
+          await pool.sql`
             UPDATE schedules 
             SET start_time = ${startTime}, end_time = ${endTime}, active = ${active} 
             WHERE id = ${result.rows[0].id};
           `;
         } else {
-          await sql`
+          await pool.sql`
             INSERT INTO schedules (staff_id, branch_id, day_of_week, start_time, end_time, active)
             VALUES (${staffId}, ${branchId}, ${dayOfWeek}, ${startTime}, ${endTime}, ${active});
           `;

@@ -1,5 +1,4 @@
-import { sql } from "@vercel/postgres";
-import { initDb } from "./db";
+import { pool, initDb } from "./db";
 
 /**
  * Fetch all configuration catalogs from Postgres.
@@ -18,13 +17,13 @@ export async function getAdminData() {
       schedulesResult,
       blocksResult,
     ] = await Promise.all([
-      sql`SELECT * FROM branches;`,
-      sql`SELECT * FROM services;`,
-      sql`SELECT * FROM staff;`,
-      sql`SELECT * FROM staff_branches;`,
-      sql`SELECT * FROM staff_services;`,
-      sql`SELECT * FROM schedules;`,
-      sql`SELECT * FROM blocks WHERE active = TRUE;`,
+      pool.sql`SELECT * FROM branches;`,
+      pool.sql`SELECT * FROM services;`,
+      pool.sql`SELECT * FROM staff;`,
+      pool.sql`SELECT * FROM staff_branches;`,
+      pool.sql`SELECT * FROM staff_services;`,
+      pool.sql`SELECT * FROM schedules;`,
+      pool.sql`SELECT * FROM blocks WHERE active = TRUE;`,
     ]);
 
     const branches = branchesResult.rows.map((row) => ({
@@ -108,7 +107,7 @@ export async function getReservations() {
   await initDb();
 
   try {
-    const result = await sql`SELECT * FROM appointments ORDER BY date ASC, time ASC;`;
+    const result = await pool.sql`SELECT * FROM appointments ORDER BY date ASC, time ASC;`;
     
     return result.rows.map((row) => ({
       id: row.id,
@@ -140,7 +139,7 @@ export async function saveReservation(res) {
   try {
     const createdAt = res.createdAt || new Date().toISOString();
     
-    await sql`
+    await pool.sql`
       INSERT INTO appointments (
         id, date, time, branch, address, staff, service, duration_mins, price, client_name, client_phone, status, created_at
       ) VALUES (

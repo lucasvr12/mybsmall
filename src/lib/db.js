@@ -1,10 +1,15 @@
-import { sql } from "@vercel/postgres";
+import { createPool } from "@vercel/postgres";
 
-// Helper to check if tables exist and initialize them if not (Vercel Postgres)
+// Initialize Postgres connection pool supporting custom Vercel prefix "STORAGE_URL"
+export const pool = createPool({
+  connectionString: process.env.STORAGE_URL || process.env.POSTGRES_URL
+});
+
+// Helper to check if tables exist and initialize them if not
 export async function initDb() {
   try {
     // 1. Create tables if they do not exist
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS branches (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -15,7 +20,7 @@ export async function initDb() {
       );
     `;
 
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS services (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -26,7 +31,7 @@ export async function initDb() {
       );
     `;
 
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS staff (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -36,7 +41,7 @@ export async function initDb() {
       );
     `;
 
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS staff_branches (
         staff_id TEXT REFERENCES staff(id) ON DELETE CASCADE,
         branch_id TEXT REFERENCES branches(id) ON DELETE CASCADE,
@@ -45,7 +50,7 @@ export async function initDb() {
       );
     `;
 
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS staff_services (
         staff_id TEXT REFERENCES staff(id) ON DELETE CASCADE,
         service_id TEXT REFERENCES services(id) ON DELETE CASCADE,
@@ -54,7 +59,7 @@ export async function initDb() {
       );
     `;
 
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS schedules (
         id SERIAL PRIMARY KEY,
         staff_id TEXT REFERENCES staff(id) ON DELETE CASCADE,
@@ -66,7 +71,7 @@ export async function initDb() {
       );
     `;
 
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS blocks (
         id SERIAL PRIMARY KEY,
         type TEXT NOT NULL,
@@ -80,9 +85,7 @@ export async function initDb() {
       );
     `;
 
-    // Appointments table: Stores flat historical names rather than foreign keys 
-    // to preserve invoice history when stylists or services are deleted/renamed.
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS appointments (
         id TEXT PRIMARY KEY,
         date TEXT NOT NULL,
@@ -101,12 +104,12 @@ export async function initDb() {
     `;
 
     // 2. Seed default data if branches table is empty
-    const branchesCount = await sql`SELECT COUNT(*) FROM branches;`;
+    const branchesCount = await pool.sql`SELECT COUNT(*) FROM branches;`;
     if (parseInt(branchesCount.rows[0].count, 10) === 0) {
       console.log("Seeding database with default values...");
 
       // Seed branches
-      await sql`
+      await pool.sql`
         INSERT INTO branches (id, name, address, whatsapp, calendar_id, active) VALUES
         ('carrizalejo', 'Carrizalejo', 'Avenida Manuel Gómez Morín 100, San Pedro Garza García, México, 66290', '528180262245', '', TRUE),
         ('mision', 'Misión del Valle', 'Alfonso Reyes 400 Local 30, San Pedro Garza García, México, 66230', '528180262245', '', TRUE),
@@ -114,7 +117,7 @@ export async function initDb() {
       `;
 
       // Seed staff
-      await sql`
+      await pool.sql`
         INSERT INTO staff (id, name, phone, img, active) VALUES
         ('edith', 'Edith', '8110000001', '/Staff/edith.jpg', TRUE),
         ('alicia', 'Alicia', '8110000002', '/Staff/aly.jpg', TRUE),
@@ -129,7 +132,7 @@ export async function initDb() {
       `;
 
       // Seed staff_branches relations
-      await sql`
+      await pool.sql`
         INSERT INTO staff_branches (staff_id, branch_id, active) VALUES
         ('edith', 'mision', TRUE),
         ('alicia', 'mision', TRUE),
@@ -144,7 +147,7 @@ export async function initDb() {
       `;
 
       // Seed services
-      await sql`
+      await pool.sql`
         INSERT INTO services (id, name, category, price, duration_mins, active) VALUES
         ('ninos', 'Corte Niños', 'HAIRSTUDIO', '$220', 30, TRUE),
         ('joven', 'Corte Joven', 'HAIRSTUDIO', '$260', 30, TRUE),
@@ -185,7 +188,7 @@ export async function initDb() {
       
       for (const sId of staffList) {
         for (const svId of serviceList) {
-          await sql`INSERT INTO staff_services (staff_id, service_id, active) VALUES (${sId}, ${svId}, TRUE) ON CONFLICT DO NOTHING;`;
+          await pool.sql`INSERT INTO staff_services (staff_id, service_id, active) VALUES (${sId}, ${svId}, TRUE) ON CONFLICT DO NOTHING;`;
         }
       }
 
@@ -207,7 +210,7 @@ export async function initDb() {
 
       for (const rel of relations) {
         for (const day of days) {
-          await sql`
+          await pool.sql`
             INSERT INTO schedules (staff_id, branch_id, day_of_week, start_time, end_time, active)
             VALUES (${rel.staffId}, ${rel.branchId}, ${day}, '09:00', '19:00', TRUE);
           `;
