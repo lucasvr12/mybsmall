@@ -49,11 +49,9 @@ export async function GET(request) {
   }
 
   try {
-    // 1. Fetch all config and reservations in parallel
-    const [adminData, reservations] = await Promise.all([
-      getAdminData(),
-      getReservations(),
-    ]);
+    // 1. Fetch all config and reservations sequentially
+    const adminData = await getAdminData();
+    const reservations = await getReservations();
 
     const { branches, services, staff, staffBranches, staffServices, schedules, blocks } = adminData;
 

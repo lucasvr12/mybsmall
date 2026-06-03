@@ -38,10 +38,8 @@ export async function POST(request) {
     }
 
     // 2. Fetch admin data and existing reservations
-    const [adminData, reservations] = await Promise.all([
-      getAdminData(),
-      getReservations(),
-    ]);
+    const adminData = await getAdminData();
+    const reservations = await getReservations();
 
     const { branches, services, staff, staffBranches, staffServices, schedules, blocks } = adminData;
 

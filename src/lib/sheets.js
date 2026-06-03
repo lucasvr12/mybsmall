@@ -1,4 +1,4 @@
-import { pool, initDb } from "./db";
+import { pool, initDb, withClient } from "./db";
 
 /**
  * Fetch all configuration catalogs from Postgres.
@@ -8,92 +8,84 @@ export async function getAdminData() {
   await initDb();
 
   try {
-    const [
-      branchesResult,
-      servicesResult,
-      staffResult,
-      staffBranchesResult,
-      staffServicesResult,
-      schedulesResult,
-      blocksResult,
-    ] = await Promise.all([
-      pool.sql`SELECT * FROM branches;`,
-      pool.sql`SELECT * FROM services;`,
-      pool.sql`SELECT * FROM staff;`,
-      pool.sql`SELECT * FROM staff_branches;`,
-      pool.sql`SELECT * FROM staff_services;`,
-      pool.sql`SELECT * FROM schedules;`,
-      pool.sql`SELECT * FROM blocks WHERE active = TRUE;`,
-    ]);
+    return await withClient(async (sql) => {
+      const branchesResult = await sql`SELECT * FROM branches;`;
+      const servicesResult = await sql`SELECT * FROM services;`;
+      const staffResult = await sql`SELECT * FROM staff;`;
+      const staffBranchesResult = await sql`SELECT * FROM staff_branches;`;
+      const staffServicesResult = await sql`SELECT * FROM staff_services;`;
+      const schedulesResult = await sql`SELECT * FROM schedules;`;
+      const blocksResult = await sql`SELECT * FROM blocks WHERE active = TRUE;`;
 
-    const branches = branchesResult.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      address: row.address,
-      whatsapp: row.whatsapp,
-      calendarId: row.calendar_id || "",
-      active: row.active,
-    }));
+      const branches = branchesResult.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        address: row.address,
+        whatsapp: row.whatsapp,
+        calendarId: row.calendar_id || "",
+        active: row.active,
+      }));
 
-    const services = servicesResult.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      category: row.category,
-      price: row.price,
-      durationMins: row.duration_mins,
-      active: row.active,
-    }));
+      const services = servicesResult.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        category: row.category,
+        price: row.price,
+        durationMins: row.duration_mins,
+        active: row.active,
+      }));
 
-    const staff = staffResult.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      phone: row.phone,
-      img: row.img,
-      active: row.active,
-    }));
+      const staff = staffResult.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        img: row.img,
+        active: row.active,
+      }));
 
-    const staffBranches = staffBranchesResult.rows.map((row) => ({
-      staffId: row.staff_id,
-      branchId: row.branch_id,
-      active: row.active,
-    }));
+      const staffBranches = staffBranchesResult.rows.map((row) => ({
+        staffId: row.staff_id,
+        branchId: row.branch_id,
+        active: row.active,
+      }));
 
-    const staffServices = staffServicesResult.rows.map((row) => ({
-      staffId: row.staff_id,
-      serviceId: row.service_id,
-      active: row.active,
-    }));
+      const staffServices = staffServicesResult.rows.map((row) => ({
+        staffId: row.staff_id,
+        serviceId: row.service_id,
+        active: row.active,
+      }));
 
-    const schedules = schedulesResult.rows.map((row) => ({
-      staffId: row.staff_id,
-      branchId: row.branch_id,
-      dayOfWeek: row.day_of_week,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      active: row.active,
-    }));
+      const schedules = schedulesResult.rows.map((row) => ({
+        staffId: row.staff_id,
+        branchId: row.branch_id,
+        dayOfWeek: row.day_of_week,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        active: row.active,
+      }));
 
-    const blocks = blocksResult.rows.map((row) => ({
-      id: row.id,
-      type: row.type,
-      staffId: row.staff_id || "",
-      branchId: row.branch_id,
-      date: row.date,
-      startTime: row.start_time || "",
-      endTime: row.end_time || "",
-      reason: row.reason || "",
-      active: row.active,
-    }));
+      const blocks = blocksResult.rows.map((row) => ({
+        id: row.id,
+        type: row.type,
+        staffId: row.staff_id || "",
+        branchId: row.branch_id,
+        date: row.date,
+        startTime: row.start_time || "",
+        endTime: row.end_time || "",
+        reason: row.reason || "",
+        active: row.active,
+      }));
 
-    return {
-      branches,
-      services,
-      staff,
-      staffBranches,
-      staffServices,
-      schedules,
-      blocks,
-    };
+      return {
+        branches,
+        services,
+        staff,
+        staffBranches,
+        staffServices,
+        schedules,
+        blocks,
+      };
+    });
   } catch (error) {
     console.error("Error reading admin data from Postgres:", error);
     throw error;
