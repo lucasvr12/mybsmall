@@ -85,76 +85,24 @@ export default function AdminPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      // Fetch both catalog config and active reservations
-      const [configRes, reservationsRes] = await Promise.all([
-        fetch("/api/config"),
-        fetch("/api/config?action=reservations") // wait, we have getReservations routed through Vercel WebApp/DB
-      ]);
-      
+      const configRes = await fetch("/api/config");
       const configData = await configRes.json();
       
-      // Let's fetch reservations using a direct GET to /api/admin if auth header is valid, 
-      // or we can use config route which fetches reservations if provided action=reservations
-      const resData = await fetch("/api/admin", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${sessionStorage.getItem("adminPassword")}`
-        },
-        body: JSON.stringify({ action: "getReservations" })
-      });
-      
-      let resJson = [];
-      if (resData.ok) {
-        resJson = await resData.json();
-      } else {
-        // Fallback to fetch from config endpoint if admin endpoint didn't implement getReservations directly
-        const fallbackRes = await fetch("/api/admin"); // wait, let's just make getReservations work in our admin API or direct API config
-        // Actually, let's implement getReservations directly in admin route to return them!
-        // We will query config data and reservations here:
+      if (!configRes.ok) {
+        throw new Error(configData.error || "Fallo al obtener la configuración de la base de datos.");
       }
 
-      // Let's make an API call to load reservations via admin post
-      const response = await fetch("/api/admin", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${sessionStorage.getItem("adminPassword")}`
-        },
-        body: JSON.stringify({ action: "verifyPassword", password: sessionStorage.getItem("adminPassword") })
-      });
-
-      // Let's query all config catalogs
       setConfig(configData);
-      
-      // Let's fetch reservations directly
-      const appointmentsRes = await fetch("/api/admin", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${sessionStorage.getItem("adminPassword")}`
-        },
-        body: JSON.stringify({ action: "cancelAppointment", id: "CHECK_ONLY" }) // We will get reservations below
-      });
-      
-      // Let's do a fetch to the config route we adapted
-      const r = await fetch("/api/config");
-      const cData = await r.json();
-      setConfig(cData);
 
-      // Fetch reservations from server
-      const t = await fetch("/api/admin", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${sessionStorage.getItem("adminPassword")}`
-        },
-        // We will retrieve appointments by custom action in next step, let's implement appointments query on the server side
-      });
-
+      // Fetch reservations
+      const r = await fetch("/api/config?action=reservations");
+      if (r.ok) {
+        const data = await r.json();
+        setReservations(data.values || []);
+      }
     } catch (err) {
       console.error(err);
-      setErrorMessage("No se pudo conectar a la base de datos.");
+      setErrorMessage(err.message || "No se pudo conectar a la base de datos.");
     } finally {
       setLoading(false);
     }
@@ -193,10 +141,10 @@ export default function AdminPage() {
     // unless specified
     const branchIds = newStaff.branchIds.length > 0 
       ? newStaff.branchIds 
-      : config.branches.map(b => b.id);
+      : (config.branches || []).map(b => b.id);
     const serviceIds = newStaff.serviceIds.length > 0 
       ? newStaff.serviceIds 
-      : config.services.map(s => s.id);
+      : (config.services || []).map(s => s.id);
 
     apiCall("addStaff", { 
       name: newStaff.name, 
@@ -585,7 +533,7 @@ export default function AdminPage() {
             <div className="space-y-4">
               <h3 className="text-xl font-['Oswald'] font-bold uppercase">Estilistas Activos</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {config.staff.map((st) => (
+                {(config.staff || []).map((st) => (
                   <div key={st.id} className="bg-[#111] border border-white/10 rounded-2xl p-5 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <img
@@ -726,7 +674,7 @@ export default function AdminPage() {
                   onChange={(e) => setSelectedStaffSchedule(e.target.value)}
                 >
                   <option value="">-- Elige Estilista --</option>
-                  {config.staff.map(s => (
+                  {(config.staff || []).map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
@@ -740,7 +688,7 @@ export default function AdminPage() {
                   onChange={(e) => setSelectedBranchSchedule(e.target.value)}
                 >
                   <option value="">-- Elige Sucursal --</option>
-                  {config.branches.map(b => (
+                  {(config.branches || []).map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </select>
@@ -821,7 +769,7 @@ export default function AdminPage() {
                     onChange={(e) => setNewBlock(prev => ({ ...prev, branchId: e.target.value }))}
                   >
                     <option value="">-- Seleccionar --</option>
-                    {config.branches.map(b => (
+                    {(config.branches || []).map(b => (
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
                   </select>
@@ -835,7 +783,7 @@ export default function AdminPage() {
                     onChange={(e) => setNewBlock(prev => ({ ...prev, staffId: e.target.value }))}
                   >
                     <option value="">-- Toda la Sucursal --</option>
-                    {config.staff.map(s => (
+                    {(config.staff || []).map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
@@ -921,8 +869,8 @@ export default function AdminPage() {
                   </div>
                 ) : (
                   config.blocks.map((block) => {
-                    const stylist = config.staff.find(s => s.id === block.staffId);
-                    const branch = config.branches.find(b => b.id === block.branchId);
+                    const stylist = (config.staff || []).find(s => s.id === block.staffId);
+                    const branch = (config.branches || []).find(b => b.id === block.branchId);
                     
                     return (
                       <div key={block.id} className="bg-[#111] border border-white/10 rounded-xl p-5 flex items-center justify-between">
