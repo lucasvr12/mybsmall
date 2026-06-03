@@ -62,7 +62,7 @@ export default function AdminPage() {
       const days = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
       const initial = {};
       days.forEach(day => {
-        const sched = config.schedules.find(
+        const sched = (config.schedules || []).find(
           s => s.staffId === selectedStaffSchedule && s.branchId === selectedBranchSchedule && s.dayOfWeek === day
         ) || { startTime: "09:00", endTime: "19:00", active: true };
         initial[day] = { ...sched };
@@ -962,13 +962,13 @@ export default function AdminPage() {
                   {/* Active Blocks List for this Stylist */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Bloqueos de esta estilista</h4>
-                    {config.blocks.filter(b => b.staffId === selectedStaffSchedule && b.branchId === selectedBranchSchedule).length === 0 ? (
+                    {(config.blocks || []).filter(b => b.staffId === selectedStaffSchedule && b.branchId === selectedBranchSchedule).length === 0 ? (
                       <p className="text-xs text-gray-500 italic bg-[#111]/30 p-4 border border-white/5 rounded-xl text-center">
                         No hay bloqueos activos para esta estilista en esta sucursal.
                       </p>
                     ) : (
                       <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {config.blocks
+                        {(config.blocks || [])
                           .filter(b => b.staffId === selectedStaffSchedule && b.branchId === selectedBranchSchedule)
                           .map(block => (
                             <div key={block.id} className="bg-[#111] border border-white/10 rounded-xl p-3.5 flex items-center justify-between text-xs">
