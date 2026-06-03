@@ -1,57 +1,3 @@
-import { google } from "googleapis";
-
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
-
-// Cache the auth client to avoid re-creating it
-let cachedAuth = null;
-function getAuthClient() {
-  if (cachedAuth) return cachedAuth;
-
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
-  if (privateKey) {
-    privateKey = privateKey.trim();
-    if (privateKey.startsWith('"')) {
-      privateKey = privateKey.substring(1);
-    }
-    if (privateKey.endsWith('"')) {
-      privateKey = privateKey.substring(0, privateKey.length - 1);
-    }
-    if (privateKey.startsWith("'")) {
-      privateKey = privateKey.substring(1);
-    }
-    if (privateKey.endsWith("'")) {
-      privateKey = privateKey.substring(0, privateKey.length - 1);
-    }
-    privateKey = privateKey.replace(/\\n/g, "\n");
-  }
-
-  if (!email || !privateKey) {
-    throw new Error("Missing Google Service Account credentials in environment variables");
-  }
-
-  // Temporary debug check for Vercel formatting - always throw structure info
-  if (privateKey) {
-    const lines = privateKey.split("\n");
-    throw new Error(`Key details: length=${privateKey.length}, lines=${lines.length}, firstLine='${lines[0]}', secondLineLength=${lines[1]?.length}, lastLine='${lines[lines.length-1]}', containsLiteralSlashN=${privateKey.includes("\\n")}, commit=${process.env.VERCEL_GIT_COMMIT_SHA || 'unknown'}`);
-  }
-
-  cachedAuth = new google.auth.GoogleAuth({
-    credentials: {
-      client_email: email,
-      private_key: privateKey,
-    },
-    scopes: SCOPES,
-  });
-
-  return cachedAuth;
-}
-
-export async function getSheetsClient() {
-  const auth = getAuthClient();
-  return google.sheets({ version: "v4", auth });
-}
-
 // Convert cell value to boolean or standard format
 function parseBool(val) {
   if (!val) return false;
@@ -60,34 +6,26 @@ function parseBool(val) {
 }
 
 /**
- * Fetch all configuration sheets from GOOGLE_SHEETS_ADMIN_ID in a single batch call.
- * This is highly optimized for performance and quota saving.
+ * Fetch all configuration sheets from GOOGLE_SHEETS_WEBAPP_URL.
  */
 export async function getAdminData() {
-  const sheets = await getSheetsClient();
-  const spreadsheetId = process.env.GOOGLE_SHEETS_ADMIN_ID;
+  const webappUrl = process.env.GOOGLE_SHEETS_WEBAPP_URL;
 
-  if (!spreadsheetId) {
-    throw new Error("GOOGLE_SHEETS_ADMIN_ID not configured");
+  if (!webappUrl) {
+    throw new Error("GOOGLE_SHEETS_WEBAPP_URL not configured");
   }
 
-  const ranges = [
-    "Sucursales!A:F",
-    "Servicios!A:F",
-    "Staff!A:E",
-    "Staff_Sucursales!A:C",
-    "Staff_Servicios!A:C",
-    "Horarios!A:F",
-    "Bloqueos!A:H",
-  ];
-
   try {
-    const response = await sheets.spreadsheets.values.batchGet({
-      spreadsheetId,
-      ranges,
+    const response = await fetch(`${webappUrl}?action=config`, {
+      cache: "no-store", // Ensure we bypass Next.js cache
     });
 
-    const valueRanges = response.data.valueRanges || [];
+    if (!response.ok) {
+      throw new Error(`Failed to fetch config from Apps Script: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const valueRanges = data.valueRanges || [];
 
     // Parse Sucursales
     // id_sucursal, nombre_sucursal, direccion, whatsapp, calendar_id, activa
@@ -178,29 +116,32 @@ export async function getAdminData() {
       blocks,
     };
   } catch (error) {
-    console.error("Error reading admin sheets:", error);
+    console.error("Error reading admin sheets via WebApp:", error);
     throw error;
   }
 }
 
 /**
- * Fetch all reservations from the dedicated GOOGLE_SHEETS_RESERVAS_ID sheet.
+ * Fetch all reservations from the WebApp.
  */
 export async function getReservations() {
-  const sheets = await getSheetsClient();
-  const spreadsheetId = process.env.GOOGLE_SHEETS_RESERVAS_ID;
+  const webappUrl = process.env.GOOGLE_SHEETS_WEBAPP_URL;
 
-  if (!spreadsheetId) {
-    throw new Error("GOOGLE_SHEETS_RESERVAS_ID not configured");
+  if (!webappUrl) {
+    throw new Error("GOOGLE_SHEETS_WEBAPP_URL not configured");
   }
 
   try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "Reservas!A:M",
+    const response = await fetch(`${webappUrl}?action=reservations`, {
+      cache: "no-store",
     });
 
-    const rows = response.data.values || [];
+    if (!response.ok) {
+      throw new Error(`Failed to fetch reservations from Apps Script: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const rows = data.values || [];
     if (rows.length <= 1) return [];
 
     // Parse columns:
@@ -221,52 +162,38 @@ export async function getReservations() {
       createdAt: row[12] || "",
     }));
   } catch (error) {
-    console.error("Error getting reservations from Sheets:", error);
+    console.error("Error getting reservations from Sheets via WebApp:", error);
     return [];
   }
 }
 
 /**
- * Write a new reservation to GOOGLE_SHEETS_RESERVAS_ID.
+ * Write a new reservation via WebApp.
  */
 export async function saveReservation(res) {
-  const sheets = await getSheetsClient();
-  const spreadsheetId = process.env.GOOGLE_SHEETS_RESERVAS_ID;
+  const webappUrl = process.env.GOOGLE_SHEETS_WEBAPP_URL;
 
-  if (!spreadsheetId) {
-    throw new Error("GOOGLE_SHEETS_RESERVAS_ID not configured");
+  if (!webappUrl) {
+    throw new Error("GOOGLE_SHEETS_WEBAPP_URL not configured");
   }
 
-  // Row columns:
-  // id_reserva, fecha_cita, hora_cita, sucursal, direccion_sucursal, staff, servicio, duracion, precio, nombre_cliente, telefono_cliente, estado, fecha_creacion
-  const values = [
-    [
-      res.id,
-      res.date,
-      res.time,
-      res.branch,
-      res.address,
-      res.staff,
-      res.service,
-      res.durationMins,
-      res.price,
-      res.clientName,
-      res.clientPhone,
-      res.status || "Confirmada",
-      res.createdAt || new Date().toISOString(),
-    ],
-  ];
-
   try {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: "Reservas!A:M",
-      valueInputOption: "RAW",
-      requestBody: { values },
+    const response = await fetch(webappUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(res),
     });
-    return true;
+
+    if (!response.ok) {
+      throw new Error(`Failed to save reservation via Apps Script WebApp: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.success;
   } catch (error) {
-    console.error("Error appending reservation to Sheets:", error);
+    console.error("Error appending reservation to Sheets via WebApp:", error);
     throw error;
   }
 }
