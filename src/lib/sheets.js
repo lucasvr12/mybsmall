@@ -1,110 +1,90 @@
-// Convert cell value to boolean or standard format
-function parseBool(val) {
-  if (!val) return false;
-  const str = String(val).trim().toUpperCase();
-  return str === "TRUE" || str === "SI" || str === "1" || str === "SÍ" || str === "YES";
-}
+import { sql } from "@vercel/postgres";
+import { initDb } from "./db";
 
 /**
- * Fetch all configuration sheets from GOOGLE_SHEETS_WEBAPP_URL.
+ * Fetch all configuration catalogs from Postgres.
  */
 export async function getAdminData() {
-  const webappUrl = process.env.GOOGLE_SHEETS_WEBAPP_URL;
-
-  if (!webappUrl) {
-    throw new Error("GOOGLE_SHEETS_WEBAPP_URL not configured");
-  }
+  // Ensure tables are initialized and seeded
+  await initDb();
 
   try {
-    const response = await fetch(`${webappUrl}?action=config`, {
-      cache: "no-store", // Ensure we bypass Next.js cache
-    });
+    const [
+      branchesResult,
+      servicesResult,
+      staffResult,
+      staffBranchesResult,
+      staffServicesResult,
+      schedulesResult,
+      blocksResult,
+    ] = await Promise.all([
+      sql`SELECT * FROM branches;`,
+      sql`SELECT * FROM services;`,
+      sql`SELECT * FROM staff;`,
+      sql`SELECT * FROM staff_branches;`,
+      sql`SELECT * FROM staff_services;`,
+      sql`SELECT * FROM schedules;`,
+      sql`SELECT * FROM blocks WHERE active = TRUE;`,
+    ]);
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch config from Apps Script: ${response.statusText}`);
-    }
+    const branches = branchesResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      whatsapp: row.whatsapp,
+      calendarId: row.calendar_id || "",
+      active: row.active,
+    }));
 
-    const data = await response.json();
-    const valueRanges = data.valueRanges || [];
+    const services = servicesResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      price: row.price,
+      durationMins: row.duration_mins,
+      active: row.active,
+    }));
 
-    // Parse Sucursales
-    // id_sucursal, nombre_sucursal, direccion, whatsapp, calendar_id, activa
-    const branchRows = valueRanges[0]?.values || [];
-    const branches = branchRows.slice(1).map((row) => ({
-      id: row[0] || "",
-      name: row[1] || "",
-      address: row[2] || "",
-      whatsapp: row[3] || "",
-      calendarId: row[4] || "",
-      active: parseBool(row[5]),
-    })).filter(b => b.id);
+    const staff = staffResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+      img: row.img,
+      active: row.active,
+    }));
 
-    // Parse Servicios
-    // id_servicio, nombre_servicio, categoria, precio, duracion_minutos, activo
-    const serviceRows = valueRanges[1]?.values || [];
-    const services = serviceRows.slice(1).map((row) => ({
-      id: row[0] || "",
-      name: row[1] || "",
-      category: row[2] || "",
-      price: row[3] || "",
-      durationMins: parseInt(row[4], 10) || 30,
-      active: parseBool(row[5]),
-    })).filter(s => s.id);
+    const staffBranches = staffBranchesResult.rows.map((row) => ({
+      staffId: row.staff_id,
+      branchId: row.branch_id,
+      active: row.active,
+    }));
 
-    // Parse Staff
-    // id_staff, nombre, telefono, foto, activo
-    const staffRows = valueRanges[2]?.values || [];
-    const staff = staffRows.slice(1).map((row) => ({
-      id: row[0] || "",
-      name: row[1] || "",
-      phone: row[2] || "",
-      img: row[3] || "",
-      active: parseBool(row[4]),
-    })).filter(s => s.id);
+    const staffServices = staffServicesResult.rows.map((row) => ({
+      staffId: row.staff_id,
+      serviceId: row.service_id,
+      active: row.active,
+    }));
 
-    // Parse Staff_Sucursales
-    // id_staff, id_sucursal, activo
-    const staffBranchRows = valueRanges[3]?.values || [];
-    const staffBranches = staffBranchRows.slice(1).map((row) => ({
-      staffId: row[0] || "",
-      branchId: row[1] || "",
-      active: parseBool(row[2]),
-    })).filter(sb => sb.staffId && sb.branchId);
+    const schedules = schedulesResult.rows.map((row) => ({
+      staffId: row.staff_id,
+      branchId: row.branch_id,
+      dayOfWeek: row.day_of_week,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      active: row.active,
+    }));
 
-    // Parse Staff_Servicios
-    // id_staff, id_servicio, activo
-    const staffServiceRows = valueRanges[4]?.values || [];
-    const staffServices = staffServiceRows.slice(1).map((row) => ({
-      staffId: row[0] || "",
-      serviceId: row[1] || "",
-      active: parseBool(row[2]),
-    })).filter(ss => ss.staffId && ss.serviceId);
-
-    // Parse Horarios
-    // id_staff, id_sucursal, dia_semana, hora_inicio, hora_fin, activo
-    const workingHoursRows = valueRanges[5]?.values || [];
-    const schedules = workingHoursRows.slice(1).map((row) => ({
-      staffId: row[0] || "",
-      branchId: row[1] || "",
-      dayOfWeek: String(row[2] || "").trim().toLowerCase(),
-      startTime: row[3] || "",
-      endTime: row[4] || "",
-      active: parseBool(row[5]),
-    })).filter(sh => sh.staffId && sh.branchId && sh.dayOfWeek);
-
-    // Parse Bloqueos
-    // tipo_bloqueo, id_staff, id_sucursal, fecha, hora_inicio, hora_fin, motivo, activo
-    const blockRows = valueRanges[6]?.values || [];
-    const blocks = blockRows.slice(1).map((row) => ({
-      type: row[0] || "", // e.g. 'Completo', 'Parcial'
-      staffId: row[1] || "", // can be empty if it blocks entire branch
-      branchId: row[2] || "",
-      date: row[3] || "", // e.g. YYYY-MM-DD
-      startTime: row[4] || "",
-      endTime: row[5] || "",
-      reason: row[6] || "",
-      active: parseBool(row[7]),
-    })).filter(b => b.active);
+    const blocks = blocksResult.rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      staffId: row.staff_id || "",
+      branchId: row.branch_id,
+      date: row.date,
+      startTime: row.start_time || "",
+      endTime: row.end_time || "",
+      reason: row.reason || "",
+      active: row.active,
+    }));
 
     return {
       branches,
@@ -116,84 +96,72 @@ export async function getAdminData() {
       blocks,
     };
   } catch (error) {
-    console.error("Error reading admin sheets via WebApp:", error);
+    console.error("Error reading admin data from Postgres:", error);
     throw error;
   }
 }
 
 /**
- * Fetch all reservations from the WebApp.
+ * Fetch all reservations from Postgres.
  */
 export async function getReservations() {
-  const webappUrl = process.env.GOOGLE_SHEETS_WEBAPP_URL;
-
-  if (!webappUrl) {
-    throw new Error("GOOGLE_SHEETS_WEBAPP_URL not configured");
-  }
+  await initDb();
 
   try {
-    const response = await fetch(`${webappUrl}?action=reservations`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch reservations from Apps Script: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const rows = data.values || [];
-    if (rows.length <= 1) return [];
-
-    // Parse columns:
-    // id_reserva, fecha_cita, hora_cita, sucursal, direccion_sucursal, staff, servicio, duracion, precio, nombre_cliente, telefono_cliente, estado, fecha_creacion
-    return rows.slice(1).map((row) => ({
-      id: row[0] || "",
-      date: row[1] || "",
-      time: row[2] || "",
-      branch: row[3] || "",
-      address: row[4] || "",
-      staff: row[5] || "",
-      service: row[6] || "",
-      durationMins: parseInt(row[7], 10) || 30,
-      price: row[8] || "",
-      clientName: row[9] || "",
-      clientPhone: row[10] || "",
-      status: row[11] || "Pendiente", // Confirmada, Pendiente, Cancelada
-      createdAt: row[12] || "",
+    const result = await sql`SELECT * FROM appointments ORDER BY date ASC, time ASC;`;
+    
+    return result.rows.map((row) => ({
+      id: row.id,
+      date: row.date,
+      time: row.time,
+      branch: row.branch,
+      address: row.address,
+      staff: row.staff,
+      service: row.service,
+      durationMins: row.duration_mins,
+      price: row.price,
+      clientName: row.client_name,
+      clientPhone: row.client_phone,
+      status: row.status,
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : "",
     }));
   } catch (error) {
-    console.error("Error getting reservations from Sheets via WebApp:", error);
+    console.error("Error getting reservations from Postgres:", error);
     return [];
   }
 }
 
 /**
- * Write a new reservation via WebApp.
+ * Write a new reservation to Postgres.
  */
 export async function saveReservation(res) {
-  const webappUrl = process.env.GOOGLE_SHEETS_WEBAPP_URL;
-
-  if (!webappUrl) {
-    throw new Error("GOOGLE_SHEETS_WEBAPP_URL not configured");
-  }
+  await initDb();
 
   try {
-    const response = await fetch(webappUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(res),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to save reservation via Apps Script WebApp: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    return result.success;
+    const createdAt = res.createdAt || new Date().toISOString();
+    
+    await sql`
+      INSERT INTO appointments (
+        id, date, time, branch, address, staff, service, duration_mins, price, client_name, client_phone, status, created_at
+      ) VALUES (
+        ${res.id}, 
+        ${res.date}, 
+        ${res.time}, 
+        ${res.branch}, 
+        ${res.address}, 
+        ${res.staff}, 
+        ${res.service}, 
+        ${res.durationMins}, 
+        ${res.price}, 
+        ${res.clientName}, 
+        ${res.clientPhone}, 
+        ${res.status || "Confirmada"}, 
+        ${createdAt}
+      );
+    `;
+    return true;
   } catch (error) {
-    console.error("Error appending reservation to Sheets via WebApp:", error);
+    console.error("Error saving reservation to Postgres:", error);
     throw error;
   }
 }
