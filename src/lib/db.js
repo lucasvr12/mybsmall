@@ -1,6 +1,6 @@
 import { sql } from "@vercel/postgres";
 
-// Helper to check if tables exist and initialize them if not
+// Helper to check if tables exist and initialize them if not (Vercel Postgres)
 export async function initDb() {
   try {
     // 1. Create tables if they do not exist
