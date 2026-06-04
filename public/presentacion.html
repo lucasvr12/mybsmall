@@ -189,6 +189,90 @@
             background: black;
             border-radius: 20px;
         }
+
+        /* Responsive Media Queries for Mobile devices */
+        @media (max-width: 768px) {
+            .slide {
+                padding: 30px 16px;
+                height: auto;
+                min-height: 100vh;
+                justify-content: flex-start;
+                gap: 20px;
+                overflow-y: auto;
+            }
+            .slides-container {
+                scroll-snap-type: none;
+                height: auto;
+                overflow-y: visible;
+            }
+            h1 {
+                font-size: 2.2rem;
+            }
+            h2 {
+                font-size: 1.6rem;
+                margin-bottom: 10px;
+            }
+            p {
+                font-size: 0.95rem;
+            }
+            .grid-2 {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                height: auto;
+            }
+            .grid-3 {
+                grid-template-columns: 1fr;
+                gap: 15px;
+                margin-top: 10px;
+            }
+            .mockup-phone {
+                height: 50vh !important;
+                width: 240px !important;
+                margin: 10px auto !important;
+            }
+            /* Slide 5 side-by-side mockups */
+            div[style*="display: flex; gap: 15px;"] {
+                flex-direction: row !important;
+                flex-wrap: wrap;
+                gap: 10px !important;
+            }
+            div[style*="display: flex; gap: 15px;"] .mockup-phone {
+                height: 40vh !important;
+                width: 130px !important;
+                padding: 5px !important;
+                border-width: 4px !important;
+                border-radius: 15px !important;
+            }
+            /* Slide 6 side-by-side admin layout */
+            div[style*="display: flex; gap: 20px;"] {
+                flex-direction: column !important;
+                height: auto !important;
+                gap: 15px !important;
+            }
+            div[style*="display: flex; gap: 20px;"] > div {
+                width: 100% !important;
+                height: 30vh !important;
+            }
+            .feature-box {
+                padding: 15px;
+            }
+            .number-big {
+                font-size: 2.5rem;
+            }
+            table {
+                display: block;
+                overflow-x: auto;
+                width: 100%;
+            }
+            table th, table td {
+                padding: 10px;
+                font-size: 0.85rem;
+            }
+            .footer {
+                margin-top: 20px;
+                padding-top: 15px;
+            }
+        }
     </style>
 </head>
 <body>
