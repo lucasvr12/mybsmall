@@ -307,7 +307,15 @@ Gracias.`;
               return (
                 <button
                   key={branch.id}
-                  onClick={() => updateField("branch", branch.id)}
+                  onClick={() => {
+                    updateField("branch", branch.id);
+                    setTimeout(() => {
+                      window.scrollTo({
+                        top: document.documentElement.scrollHeight || document.body.scrollHeight,
+                        behavior: "smooth"
+                      });
+                    }, 100);
+                  }}
                   className={`relative overflow-hidden flex flex-col items-start justify-end p-5 border rounded-2xl transition-all duration-300 h-36 text-left ${
                     isSelected
                       ? "border-mbRed shadow-lg shadow-mbRed/20 scale-[1.01]"
